@@ -1,3 +1,4 @@
+
 # Stage 1: Build
 FROM maven:3.9-eclipse-temurin-21 AS build
 
@@ -13,7 +14,15 @@ FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-COPY --from=build /app/target/order-service-1.0.0.jar app.jar
+# Create a non-root application user
+RUN groupadd --system appgroup && \
+    useradd --system --gid appgroup appuser
+
+# Copy JAR with application user ownership
+COPY --from=build --chown=appuser:appgroup /app/target/order-service-1.0.0.jar app.jar
+
+# Switch to non-root user
+USER appuser
 
 EXPOSE 18084
 
