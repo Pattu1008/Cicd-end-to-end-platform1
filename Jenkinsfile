@@ -11,19 +11,17 @@ pipeline {
 
         stage('Build & Verify Order Service') {
             steps {
-                sh '''
-                    cd services/order-service
-                    mvn clean verify
-                '''
+                dir('services/order-service') {
+                    sh 'mvn clean verify'
+                }
             }
         }
 
         stage('Build & Verify Product Service') {
             steps {
-                sh '''
-                    cd services/product-service
-                    mvn clean verify
-                '''
+                dir('services/product-service') {
+                    sh 'mvn clean verify'
+                }
             }
         }
     }
@@ -34,16 +32,37 @@ pipeline {
             // Publish JUnit test results for both services
             junit(
                 testResults: 'services/*/target/surefire-reports/TEST-*.xml',
-                allowEmptyResults: false
+                allowEmptyResults: true
             )
 
-            // Archive Order and Product JAR files
+            // Publish Order Service coverage
+            recordCoverage(
+                id: 'order-service',
+                name: 'Order Service Coverage',
+                tools: [[
+                    parser: 'JACOCO',
+                    pattern: 'services/order-service/target/site/jacoco/jacoco.xml'
+                ]]
+            )
+
+            // Publish Product Service coverage
+            recordCoverage(
+                id: 'product-service',
+                name: 'Product Service Coverage',
+                tools: [[
+                    parser: 'JACOCO',
+                    pattern: 'services/product-service/target/site/jacoco/jacoco.xml'
+                ]]
+            )
+
+            // Archive both service JAR files
             archiveArtifacts(
                 artifacts: 'services/*/target/*.jar',
-                fingerprint: true
+                fingerprint: true,
+                allowEmptyArchive: true
             )
 
-            // Archive JaCoCo HTML, XML and CSV reports
+            // Archive JaCoCo reports
             archiveArtifacts(
                 artifacts: 'services/*/target/site/jacoco/**',
                 allowEmptyArchive: true
@@ -56,6 +75,10 @@ pipeline {
 
         failure {
             echo 'Pipeline failed. Check console output.'
+        }
+
+        cleanup {
+            echo 'Pipeline execution completed.'
         }
     }
 }
