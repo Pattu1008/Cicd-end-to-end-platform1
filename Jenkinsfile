@@ -2,70 +2,27 @@
 pipeline {
     agent any
 
+    tools {
+        jdk 'JDK21'
+        maven 'Maven3'
+    }
+
     stages {
 
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        // ORDER SERVICE
-
-        stage('Build Order Service') {
+        stage('Build & Verify Order Service') {
             steps {
                 sh '''
                     cd services/order-service
-                    mvn clean compile
+                    mvn clean verify
                 '''
             }
         }
 
-        stage('Test Order Service') {
-            steps {
-                sh '''
-                    cd services/order-service
-                    mvn test
-                '''
-            }
-        }
-
-        // PRODUCT SERVICE
-
-        stage('Build Product Service') {
+        stage('Build & Verify Product Service') {
             steps {
                 sh '''
                     cd services/product-service
-                    mvn clean compile
-                '''
-            }
-        }
-
-        stage('Test Product Service') {
-            steps {
-                sh '''
-                    cd services/product-service
-                    mvn test
-                '''
-            }
-        }
-
-        // PACKAGE
-
-        stage('Package Order Service') {
-            steps {
-                sh '''
-                    cd services/order-service
-                    mvn package -DskipTests
-                '''
-            }
-        }
-
-        stage('Package Product Service') {
-            steps {
-                sh '''
-                    cd services/product-service
-                    mvn package -DskipTests
+                    mvn clean verify
                 '''
             }
         }
@@ -73,15 +30,15 @@ pipeline {
 
     post {
         success {
-            echo 'Both microservices built and tested successfully!'
+            echo 'Both services verified successfully!'
         }
 
         failure {
-            echo 'Pipeline failed. Check the failed stage.'
+            echo 'Build or verification failed!'
         }
 
         always {
-            echo 'Jenkins pipeline execution completed.'
+            echo 'Pipeline execution completed.'
         }
     }
 }
