@@ -2,8 +2,6 @@
 pipeline {
     agent any
 
-   
-
     stages {
 
         stage('Checkout') {
@@ -12,32 +10,74 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        // ORDER SERVICE
+
+        stage('Build Order Service') {
             steps {
-                sh 'mvn clean compile'
+                sh '''
+                    cd services/order-service
+                    mvn clean compile
+                '''
             }
         }
 
-        stage('Unit Tests') {
+        stage('Test Order Service') {
             steps {
-                sh 'mvn test'
+                sh '''
+                    cd services/order-service
+                    mvn test
+                '''
             }
         }
 
-        stage('Package') {
+        // PRODUCT SERVICE
+
+        stage('Build Product Service') {
             steps {
-                sh 'mvn package -DskipTests'
+                sh '''
+                    cd services/product-service
+                    mvn clean compile
+                '''
+            }
+        }
+
+        stage('Test Product Service') {
+            steps {
+                sh '''
+                    cd services/product-service
+                    mvn test
+                '''
+            }
+        }
+
+        // PACKAGE
+
+        stage('Package Order Service') {
+            steps {
+                sh '''
+                    cd services/order-service
+                    mvn package -DskipTests
+                '''
+            }
+        }
+
+        stage('Package Product Service') {
+            steps {
+                sh '''
+                    cd services/product-service
+                    mvn package -DskipTests
+                '''
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Both microservices built and tested successfully!'
         }
 
         failure {
-            echo 'Pipeline failed. Check the console output.'
+            echo 'Pipeline failed. Check the failed stage.'
         }
 
         always {
