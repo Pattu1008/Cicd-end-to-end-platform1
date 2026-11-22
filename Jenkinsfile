@@ -29,16 +29,33 @@ pipeline {
     }
 
     post {
+        always {
+
+            // Publish JUnit test results for both services
+            junit(
+                testResults: 'services/*/target/surefire-reports/TEST-*.xml',
+                allowEmptyResults: false
+            )
+
+            // Archive Order and Product JAR files
+            archiveArtifacts(
+                artifacts: 'services/*/target/*.jar',
+                fingerprint: true
+            )
+
+            // Archive JaCoCo HTML, XML and CSV reports
+            archiveArtifacts(
+                artifacts: 'services/*/target/site/jacoco/**',
+                allowEmptyArchive: true
+            )
+        }
+
         success {
-            echo 'Both services verified successfully!'
+            echo 'Both services built, tested and verified successfully!'
         }
 
         failure {
-            echo 'Build or verification failed!'
-        }
-
-        always {
-            echo 'Pipeline execution completed.'
+            echo 'Pipeline failed. Check console output.'
         }
     }
 }
