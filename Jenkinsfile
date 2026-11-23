@@ -31,7 +31,7 @@ pipeline {
         stage('SonarQube Analysis - Order') {
             steps {
                 dir('services/order-service') {
-                    withSonarQubeEnv('SonarQube') {
+                    withSonarQubeEnv('Sonarserver') {
                         withCredentials([
                             string(
                                 credentialsId: 'sonar-order-token',
@@ -63,17 +63,17 @@ pipeline {
         stage('SonarQube Analysis - Product') {
             steps {
                 dir('services/product-service') {
-                    withSonarQubeEnv('SonarQube') {
+                    withSonarQubeEnv('Sonarserver') {
                         withCredentials([
                             string(
-                                credentialsId: 'sonar-product-token',
-                                variable: 'SONAR_TOKEN'
+                                credentialsId: 'productservice',
+                                variable: 'productservice'
                             )
                         ]) {
                             sh '''
                                 mvn sonar:sonar \
                                   -Dsonar.projectKey=Productservice \
-                                  -Dsonar.token=$SONAR_TOKEN \
+                                  -Dsonar.token=$productservice \
                                   -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                             '''
                         }
