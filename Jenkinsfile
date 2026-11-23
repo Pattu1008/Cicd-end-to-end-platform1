@@ -30,18 +30,20 @@ pipeline {
         // 3. SonarQube analysis for Order Service
         stage('SonarQube Analysis - Order') {
             steps {
-                dir('services/order-service') {
-                    withSonarQubeEnv('Sonarserver') {
-                        withCredentials([
-                            string(
-                                credentialsId: 'sonar-order-token',
-                                variable: 'SONAR_TOKEN'
-                            )
-                        ]) {
+                withSonarQubeEnv('Sonarserver') {
+                    withCredentials([
+                        string(
+                            credentialsId: 'sonar-order-token',
+                            variable: 'SONAR_TOKEN'
+                        )
+                    ]) {
+                        dir('services/order-service') {
                             sh '''
+                                set +x
+
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
-                                  -Dsonar.projectKey=orderservice \
-                                  -Dsonar.token=$SONAR_TOKEN \
+                                  -Dsonar.projectKey=order-service \
+                                  -Dsonar.token="$SONAR_TOKEN" \
                                   -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                             '''
                         }
@@ -62,18 +64,20 @@ pipeline {
         // 5. SonarQube analysis for Product Service
         stage('SonarQube Analysis - Product') {
             steps {
-                dir('services/product-service') {
-                    withSonarQubeEnv('Sonarserver') {
-                        withCredentials([
-                            string(
-                                credentialsId: 'productservice',
-                                variable: 'productservice'
-                            )
-                        ]) {
+                withSonarQubeEnv('Sonarserver') {
+                    withCredentials([
+                        string(
+                            credentialsId: 'sonar-product-token',
+                            variable: 'SONAR_TOKEN'
+                        )
+                    ]) {
+                        dir('services/product-service') {
                             sh '''
+                                set +x
+
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
-                                  -Dsonar.projectKey=Productservice \
-                                  -Dsonar.token=$productservice \
+                                  -Dsonar.projectKey=product-service \
+                                  -Dsonar.token="$SONAR_TOKEN" \
                                   -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                             '''
                         }
