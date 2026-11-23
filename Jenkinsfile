@@ -39,7 +39,7 @@ pipeline {
                             )
                         ]) {
                             sh '''
-                                mvn sonar:sonar \
+                                mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
                                   -Dsonar.projectKey=orderservice \
                                   -Dsonar.token=$SONAR_TOKEN \
                                   -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
@@ -71,7 +71,7 @@ pipeline {
                             )
                         ]) {
                             sh '''
-                                mvn sonar:sonar \
+                                mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
                                   -Dsonar.projectKey=Productservice \
                                   -Dsonar.token=$productservice \
                                   -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
