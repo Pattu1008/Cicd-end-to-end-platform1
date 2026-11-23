@@ -35,7 +35,7 @@ pipeline {
                 allowEmptyResults: true
             )
 
-            // Publish Order Service coverage
+            // Publish Order Service coverag
             recordCoverage(
                 id: 'order-service',
                 name: 'Order Service Coverage',
