@@ -25,7 +25,7 @@ pipeline {
             }
         }
 
-        stage('Build & Verify Product Service') {
+        stage('Build & Verify Product Serice') {
             steps {
                 dir('services/product-service') {
                     sh 'mvn clean verify'
