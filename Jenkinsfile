@@ -9,7 +9,15 @@ pipeline {
 
     stages {
 
-        // 1. Build and test Order Service
+        stage('Verify Tools') {
+            steps {
+                sh '''
+                    java -version
+                    mvn -version
+                '''
+            }
+        }
+
         stage('Build & Verify Order Service') {
             steps {
                 dir('services/order-service') {
@@ -18,7 +26,6 @@ pipeline {
             }
         }
 
-        // 2. Build and test Product Service
         stage('Build & Verify Product Service') {
             steps {
                 dir('services/product-service') {
@@ -27,13 +34,12 @@ pipeline {
             }
         }
 
-        // 3. SonarQube analysis for Order Service
         stage('SonarQube Analysis - Order') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
                     withCredentials([
                         string(
-                            credentialsId: 'sonar-order-token',
+                            credentialsId: 'sonarordertoken',
                             variable: 'SONAR_TOKEN'
                         )
                     ]) {
@@ -42,9 +48,9 @@ pipeline {
                                 set +x
 
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
-                                  -Dsonar.projectKey=order-service \
-                                  -Dsonar.token="$SONAR_TOKEN" \
-                                  -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                                -Dsonar.projectKey=order-service \
+                                -Dsonar.token="$SONAR_TOKEN" \
+                                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                             '''
                         }
                     }
@@ -52,7 +58,6 @@ pipeline {
             }
         }
 
-        // 4. Check Order Service Quality Gate
         stage('Quality Gate - Order') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -61,13 +66,12 @@ pipeline {
             }
         }
 
-        // 5. SonarQube analysis for Product Service
         stage('SonarQube Analysis - Product') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
                     withCredentials([
                         string(
-                            credentialsId: 'sonar-product-token',
+                            credentialsId: 'sonarproducttoken',
                             variable: 'SONAR_TOKEN'
                         )
                     ]) {
@@ -76,9 +80,9 @@ pipeline {
                                 set +x
 
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
-                                  -Dsonar.projectKey=product-service \
-                                  -Dsonar.token="$SONAR_TOKEN" \
-                                  -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                                -Dsonar.projectKey=product-service \
+                                -Dsonar.token="$SONAR_TOKEN" \
+                                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
                             '''
                         }
                     }
@@ -86,7 +90,6 @@ pipeline {
             }
         }
 
-        // 6. Check Product Service Quality Gate
         stage('Quality Gate - Product') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -98,53 +101,41 @@ pipeline {
 
     post {
         always {
+            echo 'Publishing test results...'
 
-            // Publish JUnit test results
             junit(
                 testResults: 'services/*/target/surefire-reports/TEST-*.xml',
                 allowEmptyResults: true
             )
 
-            // Publish Order Service coverage
+            echo 'Publishing code coverage...'
+
             recordCoverage(
-                id: 'order-service',
-                name: 'Order Service Coverage',
-                tools: [[
-                    parser: 'JACOCO',
-                    pattern: 'services/order-service/target/site/jacoco/jacoco.xml'
-                ]]
+                tools: [
+                    [
+                        parser: 'JACOCO',
+                        pattern: 'services/order-service/target/site/jacoco/jacoco.xml'
+                    ],
+                    [
+                        parser: 'JACOCO',
+                        pattern: 'services/product-service/target/site/jacoco/jacoco.xml'
+                    ]
+                ],
+                enabledForFailure: true
             )
 
-            // Publish Product Service coverage
-            recordCoverage(
-                id: 'product-service',
-                name: 'Product Service Coverage',
-                tools: [[
-                    parser: 'JACOCO',
-                    pattern: 'services/product-service/target/site/jacoco/jacoco.xml'
-                ]]
-            )
-
-            // Archive both service JAR files
             archiveArtifacts(
-                artifacts: 'services/*/target/*.jar',
-                fingerprint: true,
-                allowEmptyArchive: true
-            )
-
-            // Archive JaCoCo reports
-            archiveArtifacts(
-                artifacts: 'services/*/target/site/jacoco/**',
+                artifacts: 'services/*/target/*.jar,services/*/target/site/jacoco/**',
                 allowEmptyArchive: true
             )
         }
 
         success {
-            echo 'Both services built, tested and passed SonarQube Quality Gates!'
+            echo 'CI/CD Pipeline completed successfully!'
         }
 
         failure {
-            echo 'Pipeline failed. Check console output.'
+            echo 'CI/CD Pipeline failed. Check Console Output.'
         }
 
         cleanup {
