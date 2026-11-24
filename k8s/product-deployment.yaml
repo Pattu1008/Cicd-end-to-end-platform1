@@ -63,7 +63,4 @@ spec:
               cpu: "500m"
               memory: "512Mi"
 
-      volumes:
-        - name: product-storage
-          persistentVolumeClaim:
-            claimName: product-pvc
+      

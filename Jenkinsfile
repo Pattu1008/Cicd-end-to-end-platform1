@@ -238,7 +238,7 @@ pipeline {
 
                     kubectl apply -f k8s/product-configmap.yaml
                     kubectl apply -f k8s/product-secret.yaml
-                    kubectl apply -f k8s/product-pvc.yaml
+                    
 
                     kubectl apply -f k8s/order-configmap.yaml
                 '''
