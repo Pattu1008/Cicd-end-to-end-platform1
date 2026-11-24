@@ -11,15 +11,21 @@ pipeline {
 
     environment {
         IMAGE_TAG = "${BUILD_NUMBER}"
+
         AWS_REGION = 'ap-south-1'
         AWS_ACCOUNT_ID = '409953608113'
         ECR_REGISTRY = '409953608113.dkr.ecr.ap-south-1.amazonaws.com'
+
         PRODUCT_REPO = 'productservice123'
         ORDER_REPO = 'orderservice123'
+
+        EKS_CLUSTER_NAME = 'new-cluster'
+        K8S_NAMESPACE = 'microservices-cicd'
     }
 
     stages {
 
+        // 1. Verify tools
         stage('Verify Tools') {
             steps {
                 sh '''
@@ -27,10 +33,12 @@ pipeline {
                     mvn -version
                     docker --version
                     aws --version
+                    kubectl version --client
                 '''
             }
         }
 
+        // 2. Build Order Service
         stage('Build & Verify Order Service') {
             steps {
                 dir('services/order-service') {
@@ -39,6 +47,7 @@ pipeline {
             }
         }
 
+        // 3. Build Product Service
         stage('Build & Verify Product Service') {
             steps {
                 dir('services/product-service') {
@@ -47,6 +56,7 @@ pipeline {
             }
         }
 
+        // 4. SonarQube Order Analysis
         stage('SonarQube Analysis - Order') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
@@ -59,6 +69,7 @@ pipeline {
                         dir('services/order-service') {
                             sh '''
                                 set +x
+
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
                                 -Dsonar.projectKey=orderservice \
                                 -Dsonar.token="$SONAR_TOKEN" \
@@ -70,6 +81,7 @@ pipeline {
             }
         }
 
+        // 5. Order Quality Gate
         stage('Quality Gate - Order') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -78,6 +90,7 @@ pipeline {
             }
         }
 
+        // 6. SonarQube Product Analysis
         stage('SonarQube Analysis - Product') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
@@ -90,6 +103,7 @@ pipeline {
                         dir('services/product-service') {
                             sh '''
                                 set +x
+
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
                                 -Dsonar.projectKey=productservice \
                                 -Dsonar.token="$SONAR_TOKEN" \
@@ -101,6 +115,7 @@ pipeline {
             }
         }
 
+        // 7. Product Quality Gate
         stage('Quality Gate - Product') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -109,38 +124,53 @@ pipeline {
             }
         }
 
+        // 8. Build Product Docker Image
         stage('Build Docker Image - Product') {
             steps {
                 dir('services/product-service') {
-                    sh 'docker build -t product_service:${BUILD_NUMBER} .'
+                    sh '''
+                        docker build \
+                        -t product_service:${IMAGE_TAG} .
+                    '''
                 }
             }
         }
 
+        // 9. Build Order Docker Image
         stage('Build Docker Image - Order') {
             steps {
                 dir('services/order-service') {
-                    sh 'docker build -t order_service:${BUILD_NUMBER} .'
+                    sh '''
+                        docker build \
+                        -t order_service:${IMAGE_TAG} .
+                    '''
                 }
             }
         }
 
+        // 10. Login to ECR
         stage('Login to AWS ECR') {
             steps {
                 sh '''
                     set -e
-                    aws ecr get-login-password --region "$AWS_REGION" |
-                    docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+                    aws ecr get-login-password \
+                    --region "$AWS_REGION" |
+                    docker login \
+                    --username AWS \
+                    --password-stdin "$ECR_REGISTRY"
                 '''
             }
         }
 
+        // 11. Push Product Image
         stage('Push Product Image to ECR') {
             steps {
                 sh '''
                     set -e
 
-                    docker tag product_service:${IMAGE_TAG} \
+                    docker tag \
+                    product_service:${IMAGE_TAG} \
                     ${ECR_REGISTRY}/${PRODUCT_REPO}:${IMAGE_TAG}
 
                     docker push \
@@ -149,22 +179,130 @@ pipeline {
             }
         }
 
+        // 12. Push Order Image
         stage('Push Order Image to ECR') {
             steps {
                 sh '''
                     set -e
 
-                    docker tag order_service:${IMAGE_TAG} \
+                    docker tag \
+                    order_service:${IMAGE_TAG} \
                     ${ECR_REGISTRY}/${ORDER_REPO}:${IMAGE_TAG}
 
                     docker push \
                     ${ECR_REGISTRY}/${ORDER_REPO}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        // 13. Connect Jenkins Agent to EKS
+        stage('Configure EKS Connection') {
+            steps {
+                sh '''
+                    set -e
+
+                    aws eks update-kubeconfig \
+                    --region "$AWS_REGION" \
+                    --name "$EKS_CLUSTER_NAME"
+
+                    kubectl get nodes
+                '''
+            }
+        }
+
+        // 14. Create Namespace and Supporting Resources
+        stage('Deploy Kubernetes Configurations') {
+            steps {
+                sh '''
+                    set -e
+
+                    kubectl apply -f k8s/namespace.yaml
+
+                    kubectl apply -f k8s/limit-range.yaml
+                    kubectl apply -f k8s/resource-quota.yaml
+                    kubectl apply -f k8s/serviceaccount.yaml
+
+                    kubectl apply -f k8s/product-configmap.yaml
+                    kubectl apply -f k8s/product-secret.yaml
+                    kubectl apply -f k8s/product-pvc.yaml
+
+                    kubectl apply -f k8s/order-configmap.yaml
+                '''
+            }
+        }
+
+        // 15. Deploy Product Service
+        stage('Deploy Product Service to EKS') {
+            steps {
+                sh '''
+                    set -e
+
+                    sed "s|\\$\\{IMAGE_TAG\\}|${IMAGE_TAG}|g" \
+                    k8s/product-deployment.yaml |
+                    kubectl apply -f -
+
+                    kubectl apply -f k8s/product-service.yaml
+
+                    kubectl rollout status \
+                    deployment/product-deployment \
+                    -n "$K8S_NAMESPACE" \
+                    --timeout=180s
+                '''
+            }
+        }
+
+        // 16. Deploy Order Service
+        stage('Deploy Order Service to EKS') {
+            steps {
+                sh '''
+                    set -e
+
+                    sed "s|\\$\\{IMAGE_TAG\\}|${IMAGE_TAG}|g" \
+                    k8s/order-deployment.yaml |
+                    kubectl apply -f -
+
+                    kubectl apply -f k8s/order-service.yaml
+
+                    kubectl apply -f k8s/order-hpa.yaml
+
+                    kubectl rollout status \
+                    deployment/order-deployment \
+                    -n "$K8S_NAMESPACE" \
+                    --timeout=180s
+                '''
+            }
+        }
+
+        // 17. Verify Kubernetes Resources
+        stage('Verify Kubernetes Deployment') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Checking Deployments..."
+                    kubectl get deployments -n "$K8S_NAMESPACE"
+
+                    echo "Checking Pods..."
+                    kubectl get pods -n "$K8S_NAMESPACE"
+
+                    echo "Checking Services..."
+                    kubectl get services -n "$K8S_NAMESPACE"
+
+                    echo "Checking PVC..."
+                    kubectl get pvc -n "$K8S_NAMESPACE"
+
+                    echo "Checking HPA..."
+                    kubectl get hpa -n "$K8S_NAMESPACE"
+
+                    echo "Checking Resource Quota..."
+                    kubectl get resourcequota -n "$K8S_NAMESPACE"
                 '''
             }
         }
     }
 
     post {
+
         always {
             echo 'Publishing test results...'
 
@@ -197,6 +335,7 @@ pipeline {
 
         success {
             echo 'CI/CD Pipeline completed successfully!'
+            echo "Deployed Image Tag: ${IMAGE_TAG}"
         }
 
         failure {
