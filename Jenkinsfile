@@ -54,25 +54,29 @@ pipeline {
             }
         }
 
-        // 2. Build and Test Order Service
-        stage('Build & Verify Order Service') {
-            steps {
-                dir('services/order-service') {
-                    sh 'mvn clean verify'
+        // 2. Parallel Build and Test
+        stage('Parallel Build and Test') {
+            parallel {
+
+                stage('Build & Verify Order Service') {
+                    steps {
+                        dir('services/order-service') {
+                            sh 'mvn clean verify'
+                        }
+                    }
+                }
+
+                stage('Build & Verify Product Service') {
+                    steps {
+                        dir('services/product-service') {
+                            sh 'mvn clean verify'
+                        }
+                    }
                 }
             }
         }
 
-        // 3. Build and Test Product Service
-        stage('Build and Verify Product Service') {
-            steps {
-                dir('services/product-service') {
-                    sh 'mvn clean verify'
-                }
-            }
-        }
-
-        // 4. SonarQube Analysis - Order
+        // 3. SonarQube Analysis - Order
         stage('SonarQube Analysis - Order') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
@@ -98,7 +102,7 @@ pipeline {
             }
         }
 
-        // 5. Quality Gate - Order
+        // 4. Quality Gate - Order
         stage('Quality Gate - Order') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -107,7 +111,7 @@ pipeline {
             }
         }
 
-        // 6. SonarQube Analysis - Product
+        // 5. SonarQube Analysis - Product
         stage('SonarQube Analysis - Product') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
@@ -133,7 +137,7 @@ pipeline {
             }
         }
 
-        // 7. Quality Gate - Product
+        // 6. Quality Gate - Product
         stage('Quality Gate - Product') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -142,7 +146,7 @@ pipeline {
             }
         }
 
-        // 8. Build Product Docker Image
+        // 7. Build Product Docker Image
         stage('Build Docker Image - Product') {
             steps {
                 dir('services/product-service') {
@@ -156,7 +160,7 @@ pipeline {
             }
         }
 
-        // 9. Build Order Docker Image
+        // 8. Build Order Docker Image
         stage('Build Docker Image - Order') {
             steps {
                 dir('services/order-service') {
@@ -170,7 +174,7 @@ pipeline {
             }
         }
 
-        // 10. Login to AWS ECR
+        // 9. Login to AWS ECR
         stage('Login to AWS ECR') {
             steps {
                 sh '''
@@ -185,7 +189,7 @@ pipeline {
             }
         }
 
-        // 11. Push Product Image
+        // 10. Push Product Image
         stage('Push Product Image to ECR') {
             steps {
                 sh '''
@@ -201,7 +205,7 @@ pipeline {
             }
         }
 
-        // 12. Push Order Image
+        // 11. Push Order Image
         stage('Push Order Image to ECR') {
             steps {
                 sh '''
@@ -217,7 +221,7 @@ pipeline {
             }
         }
 
-        // 13. Verify ECR Images
+        // 12. Verify ECR Images
         stage('Verify ECR Images') {
             steps {
                 sh '''
@@ -240,7 +244,7 @@ pipeline {
             }
         }
 
-        // 14. Configure EKS Connection
+        // 13. Configure EKS Connection
         stage('Configure EKS Connection') {
             steps {
                 sh '''
@@ -255,7 +259,7 @@ pipeline {
             }
         }
 
-        // 15. Deploy Kubernetes Configurations
+        // 14. Deploy Kubernetes Configurations
         stage('Deploy Kubernetes Configurations') {
             steps {
                 sh '''
@@ -275,7 +279,7 @@ pipeline {
             }
         }
 
-        // 16. Deploy Product Service
+        // 15. Deploy Product Service
         stage('Deploy Product Service to EKS') {
             steps {
                 sh '''
@@ -285,9 +289,14 @@ pipeline {
                     echo "Image Tag: $IMAGE_TAG"
 
                     sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" \
-                    k8s/product-deployment.yaml |
-                    kubectl apply -f -
+                    k8s/product-deployment.yaml > /tmp/product-deployment.yaml
 
+                    if grep -q "IMAGE_TAG_PLACEHOLDER" /tmp/product-deployment.yaml; then
+                        echo "ERROR: Product image placeholder was not replaced"
+                        exit 1
+                    fi
+
+                    kubectl apply -f /tmp/product-deployment.yaml
                     kubectl apply -f k8s/product-service.yaml
 
                     kubectl rollout status \
@@ -298,7 +307,7 @@ pipeline {
             }
         }
 
-        // 17. Deploy Order Service
+        // 16. Deploy Order Service
         stage('Deploy Order Service to EKS') {
             steps {
                 sh '''
@@ -308,11 +317,15 @@ pipeline {
                     echo "Image Tag: $IMAGE_TAG"
 
                     sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" \
-                    k8s/order-deployment.yaml |
-                    kubectl apply -f -
+                    k8s/order-deployment.yaml > /tmp/order-deployment.yaml
 
+                    if grep -q "IMAGE_TAG_PLACEHOLDER" /tmp/order-deployment.yaml; then
+                        echo "ERROR: Order image placeholder was not replaced"
+                        exit 1
+                    fi
+
+                    kubectl apply -f /tmp/order-deployment.yaml
                     kubectl apply -f k8s/order-service.yaml
-                    
 
                     kubectl rollout status \
                     deployment/order-deployment \
@@ -322,7 +335,7 @@ pipeline {
             }
         }
 
-        // 18. Verify Kubernetes Deployment
+        // 17. Verify Kubernetes Deployment
         stage('Verify Kubernetes Deployment') {
             steps {
                 sh '''
