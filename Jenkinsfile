@@ -112,7 +112,7 @@ pipeline {
         }
         stage('Build docker image') {
             steps {
-                dir('services/order-service for order service') {
+                dir('services/order-service') {
                     sh 'docker build -t product_service:${BUILD_NUMBER} .'
                 }
 
