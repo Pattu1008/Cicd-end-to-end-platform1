@@ -1,0 +1,55 @@
+namespace: microservices-cicd
+
+product:
+  replicaCount: 1
+  image:
+    repository: 409953608113.dkr.ecr.ap-south-1.amazonaws.com/productservice123
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  containerPort: 18081
+  service:
+    type: ClusterIP
+    port: 18081
+  healthPath: /products/health
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 50
+
+order:
+  replicaCount: 1
+  image:
+    repository: 409953608113.dkr.ecr.ap-south-1.amazonaws.com/orderservice123
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  containerPort: 18082
+  service:
+    type: ClusterIP
+    port: 18082
+  healthPath: /orders/health
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 50
+
+productConfig:
+  SPRING_PROFILES_ACTIVE: "prod"
+
+orderConfig:
+  SPRING_PROFILES_ACTIVE: "prod"

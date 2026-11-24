@@ -1,0 +1,38 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-deployment
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: product-service
+spec:
+  replicas: {{ .Values.product.replicaCount }}
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    metadata:
+      labels:
+        app: product-service
+    spec:
+      containers:
+        - name: product-container
+          image: "{{ .Values.product.image.repository }}:{{ .Values.product.image.tag }}"
+          imagePullPolicy: {{ .Values.product.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.product.containerPort }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.product.healthPath }}
+              port: {{ .Values.product.containerPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.product.healthPath }}
+              port: {{ .Values.product.containerPort }}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.product.resources | nindent 12 }}

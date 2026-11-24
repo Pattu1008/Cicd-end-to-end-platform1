@@ -21,43 +21,32 @@ pipeline {
 
         EKS_CLUSTER_NAME = 'new-cluster'
         K8S_NAMESPACE = 'microservices-cicd'
+
+        HELM_RELEASE = 'microservices1'
+        HELM_CHART = './microservices1'
     }
 
     stages {
 
-        // 1. Verify Tools
         stage('Verify Tools') {
             steps {
                 sh '''
                     set -e
-
-                    echo "Checking Java"
                     java -version
-
-                    echo "Checking Maven"
                     mvn -version
-
-                    echo "Checking Git"
                     git --version
-
-                    echo "Checking Docker"
                     docker --version
-
-                    echo "Checking AWS CLI"
                     aws --version
-
-                    echo "Checking kubectl"
                     kubectl version --client
+                    helm version
 
                     echo "Build Number: $IMAGE_TAG"
                 '''
             }
         }
 
-        // 2. Parallel Build and Test
         stage('Parallel Build and Test') {
             parallel {
-
                 stage('Build & Verify Order Service') {
                     steps {
                         dir('services/order-service') {
@@ -76,15 +65,12 @@ pipeline {
             }
         }
 
-        // 3. SonarQube Analysis - Order
         stage('SonarQube Analysis - Order') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
                     withCredentials([
-                        string(
-                            credentialsId: 'sonarordertoken',
-                            variable: 'SONAR_TOKEN'
-                        )
+                        string(credentialsId: 'sonarordertoken',
+                               variable: 'SONAR_TOKEN')
                     ]) {
                         dir('services/order-service') {
                             sh '''
@@ -102,7 +88,6 @@ pipeline {
             }
         }
 
-        // 4. Quality Gate - Order
         stage('Quality Gate - Order') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -111,15 +96,12 @@ pipeline {
             }
         }
 
-        // 5. SonarQube Analysis - Product
         stage('SonarQube Analysis - Product') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
                     withCredentials([
-                        string(
-                            credentialsId: 'sonarproducttoken',
-                            variable: 'SONAR_TOKEN'
-                        )
+                        string(credentialsId: 'sonarproducttoken',
+                               variable: 'SONAR_TOKEN')
                     ]) {
                         dir('services/product-service') {
                             sh '''
@@ -137,7 +119,6 @@ pipeline {
             }
         }
 
-        // 6. Quality Gate - Product
         stage('Quality Gate - Product') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -146,35 +127,28 @@ pipeline {
             }
         }
 
-        // 7. Build Product Docker Image
         stage('Build Docker Image - Product') {
             steps {
                 dir('services/product-service') {
                     sh '''
                         set -e
-
-                        docker build \
-                        -t product-service:${IMAGE_TAG} .
+                        docker build -t product-service:${IMAGE_TAG} .
                     '''
                 }
             }
         }
 
-        // 8. Build Order Docker Image
         stage('Build Docker Image - Order') {
             steps {
                 dir('services/order-service') {
                     sh '''
                         set -e
-
-                        docker build \
-                        -t order-service:${IMAGE_TAG} .
+                        docker build -t order-service:${IMAGE_TAG} .
                     '''
                 }
             }
         }
 
-        // 9. Login to AWS ECR
         stage('Login to AWS ECR') {
             steps {
                 sh '''
@@ -189,14 +163,12 @@ pipeline {
             }
         }
 
-        // 10. Push Product Image
         stage('Push Product Image to ECR') {
             steps {
                 sh '''
                     set -e
 
-                    docker tag \
-                    product-service:${IMAGE_TAG} \
+                    docker tag product-service:${IMAGE_TAG} \
                     ${ECR_REGISTRY}/${PRODUCT_REPO}:${IMAGE_TAG}
 
                     docker push \
@@ -205,14 +177,12 @@ pipeline {
             }
         }
 
-        // 11. Push Order Image
         stage('Push Order Image to ECR') {
             steps {
                 sh '''
                     set -e
 
-                    docker tag \
-                    order-service:${IMAGE_TAG} \
+                    docker tag order-service:${IMAGE_TAG} \
                     ${ECR_REGISTRY}/${ORDER_REPO}:${IMAGE_TAG}
 
                     docker push \
@@ -221,20 +191,15 @@ pipeline {
             }
         }
 
-        // 12. Verify ECR Images
         stage('Verify ECR Images') {
             steps {
                 sh '''
                     set -e
 
-                    echo "Verifying Product Image"
-
                     aws ecr describe-images \
                     --repository-name "$PRODUCT_REPO" \
                     --image-ids imageTag="$IMAGE_TAG" \
                     --region "$AWS_REGION"
-
-                    echo "Verifying Order Image"
 
                     aws ecr describe-images \
                     --repository-name "$ORDER_REPO" \
@@ -244,7 +209,6 @@ pipeline {
             }
         }
 
-        // 13. Configure EKS Connection
         stage('Configure EKS Connection') {
             steps {
                 sh '''
@@ -259,114 +223,79 @@ pipeline {
             }
         }
 
-        // 14. Deploy Kubernetes Configurations
-        stage('Deploy Kubernetes Configurations') {
+        stage('Validate Helm Chart') {
             steps {
                 sh '''
                     set -e
 
-                    kubectl apply -f k8s/namespace.yaml
+                    echo "Checking Helm chart"
 
-                    kubectl apply -f k8s/limit-range.yaml
-                    kubectl apply -f k8s/resource-quota.yaml
-                    kubectl apply -f k8s/serviceaccount.yaml
+                    helm lint "$HELM_CHART"
 
-                    kubectl apply -f k8s/product-configmap.yaml
-                    kubectl apply -f k8s/product-secret.yaml
+                    echo "Rendering Helm templates"
 
-                    kubectl apply -f k8s/order-configmap.yaml
+                    helm template "$HELM_RELEASE" "$HELM_CHART" \
+                    --namespace "$K8S_NAMESPACE" \
+                    --set product.image.tag="$IMAGE_TAG" \
+                    --set order.image.tag="$IMAGE_TAG" \
+                    > rendered.yaml
+
+                    echo "Helm rendering completed"
                 '''
             }
         }
 
-        // 15. Deploy Product Service
-        stage('Deploy Product Service to EKS') {
+        stage('Deploy Using Helm') {
             steps {
                 sh '''
                     set -e
 
-                    echo "Deploying Product Service"
+                    echo "Deploying Product and Order services"
                     echo "Image Tag: $IMAGE_TAG"
 
-                    sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" \
-                    k8s/product-deployment.yaml > /tmp/product-deployment.yaml
+                    helm upgrade --install "$HELM_RELEASE" "$HELM_CHART" \
+                    --namespace "$K8S_NAMESPACE" \
+                    --set product.image.tag="$IMAGE_TAG" \
+                    --set order.image.tag="$IMAGE_TAG" \
+                    --wait \
+                    --timeout 5m
 
-                    if grep -q "IMAGE_TAG_PLACEHOLDER" /tmp/product-deployment.yaml; then
-                        echo "ERROR: Product image placeholder was not replaced"
-                        exit 1
-                    fi
-
-                    kubectl apply -f /tmp/product-deployment.yaml
-                    kubectl apply -f k8s/product-service.yaml
-
-                    kubectl rollout status \
-                    deployment/product-deployment \
-                    -n "$K8S_NAMESPACE" \
-                    --timeout=180s
+                    echo "Helm deployment completed"
                 '''
             }
         }
 
-        // 16. Deploy Order Service
-        stage('Deploy Order Service to EKS') {
+        stage('Verify Helm Deployment') {
             steps {
                 sh '''
                     set -e
 
-                    echo "Deploying Order Service"
-                    echo "Image Tag: $IMAGE_TAG"
+                    echo "Helm Release Status"
+                    helm status "$HELM_RELEASE" \
+                    --namespace "$K8S_NAMESPACE"
 
-                    sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" \
-                    k8s/order-deployment.yaml > /tmp/order-deployment.yaml
-
-                    if grep -q "IMAGE_TAG_PLACEHOLDER" /tmp/order-deployment.yaml; then
-                        echo "ERROR: Order image placeholder was not replaced"
-                        exit 1
-                    fi
-
-                    kubectl apply -f /tmp/order-deployment.yaml
-                    kubectl apply -f k8s/order-service.yaml
-
-                    kubectl rollout status \
-                    deployment/order-deployment \
-                    -n "$K8S_NAMESPACE" \
-                    --timeout=180s
-                '''
-            }
-        }
-
-        // 17. Verify Kubernetes Deployment
-        stage('Verify Kubernetes Deployment') {
-            steps {
-                sh '''
-                    set -e
-
-                    echo "Checking Deployments"
+                    echo "Deployments"
                     kubectl get deployments -n "$K8S_NAMESPACE"
 
-                    echo "Checking Pods"
+                    echo "Pods"
                     kubectl get pods -n "$K8S_NAMESPACE" -o wide
 
-                    echo "Checking Services"
+                    echo "Services"
                     kubectl get services -n "$K8S_NAMESPACE"
 
-                    echo "Checking HPA"
+                    echo "HPA"
                     kubectl get hpa -n "$K8S_NAMESPACE"
 
-                    echo "Checking Resource Quota"
-                    kubectl get resourcequota -n "$K8S_NAMESPACE"
-
-                    echo "Checking Deployed Images"
+                    echo "Deployed Images"
                     kubectl get deployments \
                     -n "$K8S_NAMESPACE" \
-                    -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.template.spec.containers[*].image}{"\\n"}{end}'
+                    -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.template.spec.containers[*].image}{"\n"}{end}'
                 '''
             }
         }
     }
 
     post {
-
         always {
             echo 'Publishing test results...'
 
@@ -392,7 +321,7 @@ pipeline {
             )
 
             archiveArtifacts(
-                artifacts: 'services/*/target/*.jar,services/*/target/site/jacoco/**',
+                artifacts: 'services/*/target/*.jar,services/*/target/site/jacoco/**,rendered.yaml',
                 allowEmptyArchive: true
             )
         }
