@@ -31,11 +31,22 @@ pipeline {
                 sh '''
                     set -e
 
+                    echo "Checking Java"
                     java -version
+
+                    echo "Checking Maven"
                     mvn -version
+
+                    echo "Checking Git"
                     git --version
+
+                    echo "Checking Docker"
                     docker --version
+
+                    echo "Checking AWS CLI"
                     aws --version
+
+                    echo "Checking kubectl"
                     kubectl version --client
                 '''
             }
@@ -240,7 +251,9 @@ pipeline {
                 sh '''
                     set -e
 
-                    sed "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" \
+                    echo "Deploying Product Service"
+
+                    sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" \
                     k8s/product-deployment.yaml |
                     kubectl apply -f -
 
@@ -260,7 +273,9 @@ pipeline {
                 sh '''
                     set -e
 
-                    sed "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" \
+                    echo "Deploying Order Service"
+
+                    sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" \
                     k8s/order-deployment.yaml |
                     kubectl apply -f -
 
