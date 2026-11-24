@@ -1,3 +1,4 @@
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,7 +25,7 @@ spec:
 
       containers:
         - name: order-container
-          image: order-service:${IMAGE_TAG}
+          image: 409953608113.dkr.ecr.ap-south-1.amazonaws.com/orderservice123:IMAGE_TAG_PLACEHOLDER
           imagePullPolicy: IfNotPresent
 
           ports:
@@ -32,7 +33,7 @@ spec:
 
           envFrom:
             - configMapRef:
-                name: order-config
+                name: order-configmap
 
           readinessProbe:
             httpGet:
