@@ -1,3 +1,4 @@
+
 pipeline {
     agent {
         label 'agent-1'
@@ -7,8 +8,14 @@ pipeline {
         jdk 'JDK21'
         maven 'Maven3'
     }
+
     environment {
         IMAGE_TAG = "${BUILD_NUMBER}"
+        AWS_REGION = 'ap-south-1'
+        AWS_ACCOUNT_ID = '409953608113'
+        ECR_REGISTRY = '409953608113.dkr.ecr.ap-south-1.amazonaws.com'
+        PRODUCT_REPO = 'productservice123'
+        ORDER_REPO = 'orderservice123'
     }
 
     stages {
@@ -18,6 +25,8 @@ pipeline {
                 sh '''
                     java -version
                     mvn -version
+                    docker --version
+                    aws --version
                 '''
             }
         }
@@ -30,7 +39,7 @@ pipeline {
             }
         }
 
-        stage('Build & Verify Product Serice') {
+        stage('Build & Verify Product Service') {
             steps {
                 dir('services/product-service') {
                     sh 'mvn clean verify'
@@ -50,7 +59,6 @@ pipeline {
                         dir('services/order-service') {
                             sh '''
                                 set +x
-
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
                                 -Dsonar.projectKey=orderservice \
                                 -Dsonar.token="$SONAR_TOKEN" \
@@ -82,7 +90,6 @@ pipeline {
                         dir('services/product-service') {
                             sh '''
                                 set +x
-
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
                                 -Dsonar.projectKey=productservice \
                                 -Dsonar.token="$SONAR_TOKEN" \
@@ -102,20 +109,57 @@ pipeline {
             }
         }
 
-        stage('Build docker image for product service') {
+        stage('Build Docker Image - Product') {
             steps {
                 dir('services/product-service') {
                     sh 'docker build -t product_service:${BUILD_NUMBER} .'
                 }
-
             }
         }
-        stage('Build docker image for order service') {
+
+        stage('Build Docker Image - Order') {
             steps {
                 dir('services/order-service') {
                     sh 'docker build -t order_service:${BUILD_NUMBER} .'
                 }
+            }
+        }
 
+        stage('Login to AWS ECR') {
+            steps {
+                sh '''
+                    set -e
+                    aws ecr get-login-password --region "$AWS_REGION" |
+                    docker login --username AWS --password-stdin "$ECR_REGISTRY"
+                '''
+            }
+        }
+
+        stage('Push Product Image to ECR') {
+            steps {
+                sh '''
+                    set -e
+
+                    docker tag product_service:${IMAGE_TAG} \
+                    ${ECR_REGISTRY}/${PRODUCT_REPO}:${IMAGE_TAG}
+
+                    docker push \
+                    ${ECR_REGISTRY}/${PRODUCT_REPO}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Push Order Image to ECR') {
+            steps {
+                sh '''
+                    set -e
+
+                    docker tag order_service:${IMAGE_TAG} \
+                    ${ECR_REGISTRY}/${ORDER_REPO}:${IMAGE_TAG}
+
+                    docker push \
+                    ${ECR_REGISTRY}/${ORDER_REPO}:${IMAGE_TAG}
+                '''
             }
         }
     }
