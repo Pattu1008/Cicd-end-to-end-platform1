@@ -48,6 +48,8 @@ pipeline {
 
                     echo "Checking kubectl"
                     kubectl version --client
+
+                    echo "Build Number: $IMAGE_TAG"
                 '''
             }
         }
@@ -62,7 +64,7 @@ pipeline {
         }
 
         // 3. Build and Test Product Service
-        stage('Build & Verify Product Service') {
+        stage('Build and Verify Product Service') {
             steps {
                 dir('services/product-service') {
                     sh 'mvn clean verify'
@@ -82,6 +84,7 @@ pipeline {
                     ]) {
                         dir('services/order-service') {
                             sh '''
+                                set -e
                                 set +x
 
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
@@ -116,6 +119,7 @@ pipeline {
                     ]) {
                         dir('services/product-service') {
                             sh '''
+                                set -e
                                 set +x
 
                                 mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
@@ -144,7 +148,9 @@ pipeline {
                 dir('services/product-service') {
                     sh '''
                         set -e
-                        docker build -t product_service:${IMAGE_TAG} .
+
+                        docker build \
+                        -t product-service:${IMAGE_TAG} .
                     '''
                 }
             }
@@ -156,7 +162,9 @@ pipeline {
                 dir('services/order-service') {
                     sh '''
                         set -e
-                        docker build -t order_service:${IMAGE_TAG} .
+
+                        docker build \
+                        -t order-service:${IMAGE_TAG} .
                     '''
                 }
             }
@@ -184,7 +192,7 @@ pipeline {
                     set -e
 
                     docker tag \
-                    product_service:${IMAGE_TAG} \
+                    product-service:${IMAGE_TAG} \
                     ${ECR_REGISTRY}/${PRODUCT_REPO}:${IMAGE_TAG}
 
                     docker push \
@@ -200,7 +208,7 @@ pipeline {
                     set -e
 
                     docker tag \
-                    order_service:${IMAGE_TAG} \
+                    order-service:${IMAGE_TAG} \
                     ${ECR_REGISTRY}/${ORDER_REPO}:${IMAGE_TAG}
 
                     docker push \
@@ -209,7 +217,30 @@ pipeline {
             }
         }
 
-        // 13. Configure EKS Connection
+        // 13. Verify ECR Images
+        stage('Verify ECR Images') {
+            steps {
+                sh '''
+                    set -e
+
+                    echo "Verifying Product Image"
+
+                    aws ecr describe-images \
+                    --repository-name "$PRODUCT_REPO" \
+                    --image-ids imageTag="$IMAGE_TAG" \
+                    --region "$AWS_REGION"
+
+                    echo "Verifying Order Image"
+
+                    aws ecr describe-images \
+                    --repository-name "$ORDER_REPO" \
+                    --image-ids imageTag="$IMAGE_TAG" \
+                    --region "$AWS_REGION"
+                '''
+            }
+        }
+
+        // 14. Configure EKS Connection
         stage('Configure EKS Connection') {
             steps {
                 sh '''
@@ -224,7 +255,7 @@ pipeline {
             }
         }
 
-        // 14. Deploy Kubernetes Configurations
+        // 15. Deploy Kubernetes Configurations
         stage('Deploy Kubernetes Configurations') {
             steps {
                 sh '''
@@ -238,20 +269,20 @@ pipeline {
 
                     kubectl apply -f k8s/product-configmap.yaml
                     kubectl apply -f k8s/product-secret.yaml
-                    
 
                     kubectl apply -f k8s/order-configmap.yaml
                 '''
             }
         }
 
-        // 15. Deploy Product Service
+        // 16. Deploy Product Service
         stage('Deploy Product Service to EKS') {
             steps {
                 sh '''
                     set -e
 
                     echo "Deploying Product Service"
+                    echo "Image Tag: $IMAGE_TAG"
 
                     sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" \
                     k8s/product-deployment.yaml |
@@ -267,20 +298,20 @@ pipeline {
             }
         }
 
-        // 16. Deploy Order Service
+        // 17. Deploy Order Service
         stage('Deploy Order Service to EKS') {
             steps {
                 sh '''
                     set -e
 
                     echo "Deploying Order Service"
+                    echo "Image Tag: $IMAGE_TAG"
 
                     sed "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" \
                     k8s/order-deployment.yaml |
                     kubectl apply -f -
 
                     kubectl apply -f k8s/order-service.yaml
-
                     kubectl apply -f k8s/order-hpa.yaml
 
                     kubectl rollout status \
@@ -291,7 +322,7 @@ pipeline {
             }
         }
 
-        // 17. Verify Kubernetes Deployment
+        // 18. Verify Kubernetes Deployment
         stage('Verify Kubernetes Deployment') {
             steps {
                 sh '''
@@ -306,14 +337,16 @@ pipeline {
                     echo "Checking Services"
                     kubectl get services -n "$K8S_NAMESPACE"
 
-                    echo "Checking PVC"
-                    kubectl get pvc -n "$K8S_NAMESPACE"
-
                     echo "Checking HPA"
                     kubectl get hpa -n "$K8S_NAMESPACE"
 
                     echo "Checking Resource Quota"
                     kubectl get resourcequota -n "$K8S_NAMESPACE"
+
+                    echo "Checking Deployed Images"
+                    kubectl get deployments \
+                    -n "$K8S_NAMESPACE" \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.template.spec.containers[*].image}{"\\n"}{end}'
                 '''
             }
         }
