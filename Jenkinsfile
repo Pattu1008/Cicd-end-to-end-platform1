@@ -25,12 +25,15 @@ pipeline {
 
     stages {
 
-        // 1. Verify tools
+        // 1. Verify Tools
         stage('Verify Tools') {
             steps {
                 sh '''
+                    set -e
+
                     java -version
                     mvn -version
+                    git --version
                     docker --version
                     aws --version
                     kubectl version --client
@@ -38,7 +41,7 @@ pipeline {
             }
         }
 
-        // 2. Build Order Service
+        // 2. Build and Test Order Service
         stage('Build & Verify Order Service') {
             steps {
                 dir('services/order-service') {
@@ -47,7 +50,7 @@ pipeline {
             }
         }
 
-        // 3. Build Product Service
+        // 3. Build and Test Product Service
         stage('Build & Verify Product Service') {
             steps {
                 dir('services/product-service') {
@@ -56,7 +59,7 @@ pipeline {
             }
         }
 
-        // 4. SonarQube Order Analysis
+        // 4. SonarQube Analysis - Order
         stage('SonarQube Analysis - Order') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
@@ -81,7 +84,7 @@ pipeline {
             }
         }
 
-        // 5. Order Quality Gate
+        // 5. Quality Gate - Order
         stage('Quality Gate - Order') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -90,7 +93,7 @@ pipeline {
             }
         }
 
-        // 6. SonarQube Product Analysis
+        // 6. SonarQube Analysis - Product
         stage('SonarQube Analysis - Product') {
             steps {
                 withSonarQubeEnv('Sonarserver') {
@@ -115,7 +118,7 @@ pipeline {
             }
         }
 
-        // 7. Product Quality Gate
+        // 7. Quality Gate - Product
         stage('Quality Gate - Product') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -129,8 +132,8 @@ pipeline {
             steps {
                 dir('services/product-service') {
                     sh '''
-                        docker build \
-                        -t product_service:${IMAGE_TAG} .
+                        set -e
+                        docker build -t product_service:${IMAGE_TAG} .
                     '''
                 }
             }
@@ -141,14 +144,14 @@ pipeline {
             steps {
                 dir('services/order-service') {
                     sh '''
-                        docker build \
-                        -t order_service:${IMAGE_TAG} .
+                        set -e
+                        docker build -t order_service:${IMAGE_TAG} .
                     '''
                 }
             }
         }
 
-        // 10. Login to ECR
+        // 10. Login to AWS ECR
         stage('Login to AWS ECR') {
             steps {
                 sh '''
@@ -195,7 +198,7 @@ pipeline {
             }
         }
 
-        // 13. Connect Jenkins Agent to EKS
+        // 13. Configure EKS Connection
         stage('Configure EKS Connection') {
             steps {
                 sh '''
@@ -210,7 +213,7 @@ pipeline {
             }
         }
 
-        // 14. Create Namespace and Supporting Resources
+        // 14. Deploy Kubernetes Configurations
         stage('Deploy Kubernetes Configurations') {
             steps {
                 sh '''
@@ -237,7 +240,7 @@ pipeline {
                 sh '''
                     set -e
 
-                    sed "s|\\$\\{IMAGE_TAG\\}|${IMAGE_TAG}|g" \
+                    sed "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" \
                     k8s/product-deployment.yaml |
                     kubectl apply -f -
 
@@ -257,7 +260,7 @@ pipeline {
                 sh '''
                     set -e
 
-                    sed "s|\\$\\{IMAGE_TAG\\}|${IMAGE_TAG}|g" \
+                    sed "s|\\${IMAGE_TAG}|${IMAGE_TAG}|g" \
                     k8s/order-deployment.yaml |
                     kubectl apply -f -
 
@@ -273,28 +276,28 @@ pipeline {
             }
         }
 
-        // 17. Verify Kubernetes Resources
+        // 17. Verify Kubernetes Deployment
         stage('Verify Kubernetes Deployment') {
             steps {
                 sh '''
                     set -e
 
-                    echo "Checking Deployments..."
+                    echo "Checking Deployments"
                     kubectl get deployments -n "$K8S_NAMESPACE"
 
-                    echo "Checking Pods..."
-                    kubectl get pods -n "$K8S_NAMESPACE"
+                    echo "Checking Pods"
+                    kubectl get pods -n "$K8S_NAMESPACE" -o wide
 
-                    echo "Checking Services..."
+                    echo "Checking Services"
                     kubectl get services -n "$K8S_NAMESPACE"
 
-                    echo "Checking PVC..."
+                    echo "Checking PVC"
                     kubectl get pvc -n "$K8S_NAMESPACE"
 
-                    echo "Checking HPA..."
+                    echo "Checking HPA"
                     kubectl get hpa -n "$K8S_NAMESPACE"
 
-                    echo "Checking Resource Quota..."
+                    echo "Checking Resource Quota"
                     kubectl get resourcequota -n "$K8S_NAMESPACE"
                 '''
             }
