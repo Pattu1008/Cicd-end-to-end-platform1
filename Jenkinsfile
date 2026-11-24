@@ -312,7 +312,7 @@ pipeline {
                     kubectl apply -f -
 
                     kubectl apply -f k8s/order-service.yaml
-                    kubectl apply -f k8s/order-hpa.yaml
+                    
 
                     kubectl rollout status \
                     deployment/order-deployment \
